@@ -11,12 +11,11 @@
 				position: absolute;
 				left: 50%;
 				-webkit-transform: translateX(-50%);
-				transform: translateX(-50%)
-				top: 0;
+				transform: translateX(-50%) top: 0;
 				margin: auto;
 				width: 75%;
 			}
-		
+			
 			.post {
 				overflow-wrap: break-word;
 				word-wrap: break-word;
@@ -55,87 +54,88 @@
 			}
 		</style>
 	</head>
+
 	<body>
 		<div id="timeline"></div>
 	</body>
-	
+
 	<script>
 		var last_update = 0;
-	
+
 		(function update() {
 			var dates = document.getElementsByClassName("post-date");
 			for (var i = 0; i < dates.length; ++i) {
 				dates[i].innerHTML = " - " + TimeSince(parseInt(dates[i].id));
 			}
-		
+
 			HttpGet("./timeline", function(x) {
 				if (x.readyState === 4 && x.status === 200) {
 					var results = JSON.parse(x.responseText);
 					var recent = 0;
-					
+
 					for (var i = 0; i < results.length; ++i) {
 						var post = results[i];
 						if (post.date > last_update) {
 							post.from = ReplaceTags(post.from);
 							post.message = ReplaceTags(post.message);
 							post.image = ReplaceTags(post.image);
-						
+
 							var timeline = document.getElementById("timeline");
 							var div = '<div class="post"><div class="post-author">' + post.from + '<span class="post-date" id="' + post.date + '"> - ' + TimeSince(post.date) + '</span></div><div class="post-message">' + post.message + '</div><img class="post-image" src="' + post.image + '"></div>';
-							
+
 							timeline.innerHTML = div + timeline.innerHTML;
-						
+
 							if (post.date > recent) recent = post.date;
 						}
 					}
-					
+
 					if (recent > last_update) last_update = recent;
 				}
 			});
-		
+
 			setTimeout(update, 10 * 1000);
 		})();
-		
+
 		function HttpGet(url, state) {
-            var x = new XMLHttpRequest();
-            x.onreadystatechange = function() {
+			var x = new XMLHttpRequest();
+			x.onreadystatechange = function() {
 				state(x);
-            };
-            x.open("GET", url, true);
-            x.send(null);
-        }
-		
+			};
+			x.open("GET", url, true);
+			x.send(null);
+		}
+
 		function TimeSince(date) {
 			var s = Math.floor(((new Date().getTime() / 1000) - date));
 			var i;
-			
+
 			if ((i = Math.floor(s / 31536000)) >= 1) {
 				return i + " years";
 			}
-			
+
 			if ((i = Math.floor(s / 2592000)) >= 1) {
 				return i + " seconds";
 			}
-			
+
 			if ((i = Math.floor(s / 86400)) >= 1) {
 				return i + " days";
 			}
-			
+
 			if ((i = Math.floor(s / 3600)) >= 1) {
 				return i + " hours";
 			}
-			
+
 			if ((i = Math.floor(s / 60)) >= 1) {
 				return i + " minutes";
 			}
-			
+
 			return s + " seconds";
 		}
-		
+
 		function ReplaceTags(s) {
 			return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 		}
-		
+
 		String.prototype.replaceAll = function(search, replacement) {
 			var target = this;
 			return target.replace(new RegExp(search, 'g'), replacement);
