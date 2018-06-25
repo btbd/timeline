@@ -183,12 +183,26 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 
 func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	bytes, err := json.Marshal(posts)
+	
+	w.Header().Set("Content-Type", "application/json")
+	
+	var new_posts []Post = []Post{}
+	
+	if t, err:= strconv.ParseInt(r.FormValue("t"), 10, 64); err == nil && t > 0 {
+		for _, post := range posts {
+			if post.Date > t {
+				new_posts = append(new_posts, post)
+			}
+		}
+	} else {
+		new_posts = posts
+	}
+	
+	bytes, err := json.Marshal(new_posts)
 	if err != nil {
 		return
 	}
-
+		
 	w.Write(bytes)
 }
 

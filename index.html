@@ -69,7 +69,7 @@
 				dates[i].innerHTML = " - " + TimeSince(parseInt(dates[i].id));
 			}
 
-			HttpGet("./timeline", function(x) {
+			HttpGet("./timeline?t=" + last_update, function(x) {
 				if (x.readyState === 4 && x.status === 200) {
 					var results = JSON.parse(x.responseText);
 					var recent = 0;
