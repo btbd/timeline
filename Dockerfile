@@ -3,9 +3,9 @@ COPY main.go src/
 RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
     -ldflags "-w -extldflags -static" \
     -tags netgo -installsuffix netgo \
-    -o /spec ./src/main.go
+    -o /timeline ./src/main.go
 
 FROM scratch
-COPY --from=builder /spec /spec
+COPY --from=builder /timeline /timeline
 COPY index.html src/
-ENTRYPOINT [ "/spec" ]
+ENTRYPOINT [ "/timeline" ]
