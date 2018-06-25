@@ -7,5 +7,5 @@ RUN GO_EXTLINK_ENABLED=0 CGO_ENABLED=0 go build \
 
 FROM scratch
 COPY --from=builder /timeline /timeline
-COPY index.html src/
+COPY index.html /
 ENTRYPOINT [ "/timeline" ]
