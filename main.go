@@ -149,7 +149,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			if !strings.Contains(p.Header.Get("Content-Type"), "image") {
+			if !strings.HasPrefix(p.Header.Get("Content-Type"), "image/") {
 				BadRequest(w, "Second part must be an image")
 				return
 			}
