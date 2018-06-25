@@ -177,7 +177,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			} 
 		}
 	} else {
-	
+		BadRequest(w, "Expected multipart POST request with 1st part as JSON containing 'from' and 'message', and 2nd part containing an image to post")
 	}
 }
 
