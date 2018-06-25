@@ -1,20 +1,20 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
-	"net/http"
-	"os"
-	"strconv"
-	"reflect"
-	"time"
 	"mime"
 	"mime/multipart"
-	"io"
+	"net/http"
+	"os"
+	"reflect"
+	"strconv"
 	"strings"
-	"encoding/base64"
+	"time"
 )
 
 type Post struct {
@@ -28,20 +28,20 @@ var posts []Post = []Post{}
 var tokens_path string
 
 func CheckPostVar(j map[string]interface{}, v string) string {
-	e, ok := j[v];
-	
+	e, ok := j[v]
+
 	if !ok || e == nil {
 		return `"` + v + `" must be defined`
 	}
-	
+
 	if reflect.TypeOf(e).String() != "string" {
 		return `"` + v + `" must be a string`
 	}
-	
+
 	if len(e.(string)) == 0 {
 		return `"` + v + `" cannot be an empty string`
 	}
-	
+
 	return ""
 }
 
@@ -52,7 +52,7 @@ func BadRequest(w http.ResponseWriter, err string) {
 
 func HandleFileRequest(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	
+
 	path := r.URL.Path[1:]
 
 	bytes, err := ioutil.ReadFile(path)
@@ -70,7 +70,7 @@ func HandleFileRequest(w http.ResponseWriter, r *http.Request) {
 
 func HandlePost(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	
+
 	if r.Method == "POST" {
 		bytes, err := ioutil.ReadFile(tokens_path)
 		if err == nil {
@@ -79,9 +79,9 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 				BadRequest(w, "No Bearer token provided")
 				return
 			}
-			
+
 			auth = auth[7:len(auth)]
-			
+
 			valid := false
 			for _, token := range strings.Split(strings.Replace(string(bytes), "\r", "", -1), "\n") {
 				if auth == token {
@@ -89,22 +89,22 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			
+
 			if !valid {
 				BadRequest(w, "Incorrect token provided")
 				return
 			}
 		}
-	
+
 		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil {
 			BadRequest(w, err.Error())
 			return
 		}
-		
+
 		if strings.HasPrefix(mediaType, "multipart/") {
 			mr := multipart.NewReader(r.Body, params["boundary"])
-			
+
 			p, err := mr.NextPart()
 			if err == io.EOF {
 				BadRequest(w, "No JSON part detected")
@@ -113,33 +113,33 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 				BadRequest(w, err.Error())
 				return
 			}
-			
+
 			if !strings.Contains(p.Header.Get("Content-Type"), "json") {
 				BadRequest(w, "First part must be JSON")
 				return
 			}
-				
+
 			body, err := ioutil.ReadAll(p)
 			if err != nil {
 				BadRequest(w, err.Error())
 				return
 			}
-			
+
 			j := make(map[string]interface{})
 
 			err = json.Unmarshal(body, &j)
 			if err != nil {
-				BadRequest(w, "JSON parse error: " + err.Error())
+				BadRequest(w, "JSON parse error: "+err.Error())
 				return
 			}
-		
-			for _, v := range []string{ "from", "message" } {
+
+			for _, v := range []string{"from", "message"} {
 				if e := CheckPostVar(j, v); e != "" {
 					BadRequest(w, e)
 					return
 				}
 			}
-			
+
 			p, err = mr.NextPart()
 			if err == io.EOF {
 				BadRequest(w, "No image part detected")
@@ -148,33 +148,33 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 				BadRequest(w, err.Error())
 				return
 			}
-			
+
 			if !strings.Contains(p.Header.Get("Content-Type"), "image") {
 				BadRequest(w, "Second part must be an image")
 				return
 			}
-			
+
 			body, err = ioutil.ReadAll(p)
 			if err != nil {
 				BadRequest(w, err.Error())
 				return
 			}
-			
+
 			if len(body) == 0 {
 				BadRequest(w, "The image cannot be null")
 				return
 			}
-			
+
 			var post Post
 			post.From = j["from"].(string)
 			post.Message = j["message"].(string)
 			post.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(body)
 			post.Date = time.Now().UTC().Unix()
-		
+
 			posts = append(posts, post)
 			if len(posts) > 100 {
 				posts = posts[1:101]
-			} 
+			}
 		}
 	} else {
 		BadRequest(w, "Expected multipart POST request with 1st part as JSON containing 'from' and 'message', and 2nd part containing an image to post")
@@ -183,12 +183,12 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 
 func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	
+
 	bytes, err := json.Marshal(posts)
 	if err != nil {
 		return
 	}
-	
+
 	w.Write(bytes)
 }
 
