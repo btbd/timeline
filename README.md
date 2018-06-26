@@ -7,10 +7,17 @@ A simple timeline for logging pictures with messages.
 ### Server Arguments
 
 - `p` - Port (default 80)
+- `h` - Web page header title (default "Timeline")
+- `v` - Display debug info
 - `crt` - File path to certificate for TLS
 - `key` - File path to key for TLS
 - `tokens` - File path to Bearer tokens separated by new lines for verifying POST requests
 	- If this is not specified, no Bearer token is necessary to add a post
+	- Example tokens file
+```
+firstToken123 # comment
+secondToken987 # another comment
+```
 
 ### Adding Posts
 

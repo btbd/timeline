@@ -26,6 +26,14 @@ type Post struct {
 
 var posts []Post = []Post{}
 var tokens_path string
+var verbose bool
+var header string
+
+func Print(format string, args ...interface{}) {
+	if verbose {
+		fmt.Printf(format, args...)
+	}
+}
 
 func CheckPostVar(j map[string]interface{}, v string) string {
 	e, ok := j[v]
@@ -60,7 +68,12 @@ func HandleFileRequest(w http.ResponseWriter, r *http.Request) {
 		w.Write(bytes)
 	} else {
 		bytes, err := ioutil.ReadFile("index.html")
+
 		if err == nil {
+			if len(header) != 0 {
+				bytes = []byte(strings.Replace(string(bytes), "***Timeline***", header, -1))
+			}
+
 			w.Write(bytes)
 		} else {
 			w.Write([]byte("404: \"" + path + "\" not found\n"))
@@ -83,7 +96,12 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			auth = auth[7:len(auth)]
 
 			valid := false
-			for _, token := range strings.Split(strings.Replace(string(bytes), "\r", "", -1), "\n") {
+			for _, token := range strings.Split(string(bytes), "\n") {
+				if i := strings.Index(token, "#"); i != -1 {
+					token = token[0:i]
+				}
+				token = strings.Trim(token, " \r")
+
 				if auth == token {
 					valid = true
 					break
@@ -171,6 +189,8 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			post.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(body)
 			post.Date = time.Now().UTC().Unix()
 
+			Print("POST request (time %v):\n  from:    \"%v\"\n  message: \"%v\"\n\n", post.Date, post.From, post.Message)
+
 			posts = append(posts, post)
 			if len(posts) > 100 {
 				posts = posts[1:101]
@@ -183,12 +203,12 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 
 func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	
+
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	var new_posts []Post = []Post{}
-	
-	if t, err:= strconv.ParseInt(r.FormValue("t"), 10, 64); err == nil && t > 0 {
+
+	if t, err := strconv.ParseInt(r.FormValue("t"), 10, 64); err == nil && t > 0 {
 		for _, post := range posts {
 			if post.Date > t {
 				new_posts = append(new_posts, post)
@@ -197,16 +217,17 @@ func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	} else {
 		new_posts = posts
 	}
-	
+
 	bytes, err := json.Marshal(new_posts)
 	if err != nil {
 		return
 	}
-		
+
 	w.Write(bytes)
 }
 
 func main() {
+	header = "Timeline"
 	tokens_path = "tokens"
 	port := 80
 	crt := ""
@@ -219,6 +240,8 @@ func main() {
 	}
 
 	flag.IntVar(&port, "p", port, "port")
+	flag.BoolVar(&verbose, "v", verbose, "display debug info")
+	flag.StringVar(&header, "h", header, "header title for web page")
 	flag.StringVar(&crt, "crt", crt, "certificate for TLS")
 	flag.StringVar(&key, "key", key, "key for TLS")
 	flag.StringVar(&tokens_path, "tokens", tokens_path, "tokens for authenticating requests")

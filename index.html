@@ -1,10 +1,49 @@
 <!DOCTYPE html>
 <html>
 	<head>
+		<title>***Timeline***</title>
 		<style>
+			html, body {
+				margin: 0;
+				width: 100%;
+			}
+		
 			body {
 				background-color: #e6ecf0;
 				font-family: Arial;
+			}
+			
+			#banner {
+				position: relative;
+				margin: 0;
+				width: 100%;
+				height: 50px;
+				background-color: white;
+				border-bottom: 1px solid rgba(0,0,0,0.25);
+			}
+			
+			#title {
+				padding-left: 20px;
+				position: absolute;
+				top: 50%;
+				transform: translateY(-50%);
+				font-weight: bold;
+			}
+			
+			#github {
+				float: right;
+				padding-right: 20px;
+			}
+			
+			#update {
+				padding-left: 5px;
+				position: fixed;
+				bottom: 0;
+				background-color: white;
+			}
+			
+			#update-checkbox:hover {
+				cursor: pointer;
 			}
 			
 			#timeline {
@@ -12,7 +51,7 @@
 				left: 50%;
 				-webkit-transform: translateX(-50%);
 				transform: translateX(-50%);
-				top: 0;
+				top: 60px;
 				margin: 0 auto;
 				width: 75%;
 			}
@@ -26,9 +65,9 @@
 				padding-top: 10px;
 				padding-bottom: 10px;
 				margin: auto;
+				margin-bottom: 10px;
 				width: 75%;
 				background-color: white;
-				border-bottom: 1px solid #e6ecf0;
 			}
 			
 			.post-author {
@@ -57,45 +96,63 @@
 	</head>
 
 	<body>
+		<div id="banner">
+			<div id="title">***Timeline***</div>
+			<div id="github"><a href="https://www.github.com/btbd/timeline"><img height="50px" src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Ei-sc-github.svg/200px-Ei-sc-github.svg.png"></a></div>
+		</div>
 		<div id="timeline"></div>
+		<div id="update">Auto-update <input id="update-checkbox" type="checkbox" checked></div>
 	</body>
 
 	<script>
-		var last_update = 0;
+		var last_update    = 0;
 
 		(function update() {
 			var dates = document.getElementsByClassName("post-date");
 			for (var i = 0; i < dates.length; ++i) {
-				dates[i].innerHTML = " - " + TimeSince(parseInt(dates[i].id));
+				dates[i].innerHTML = " - " + TimeSince(parseInt(dates[i].id)) + " ago";
 			}
 
-			HttpGet("./timeline?t=" + last_update, function(x) {
-				if (x.readyState === 4 && x.status === 200) {
-					var results = JSON.parse(x.responseText);
-					var recent = 0;
+			if (document.getElementById("update-checkbox").checked) {
+				HttpGet("./timeline?t=" + last_update, function(x) {
+					if (x.readyState === 4 && x.status === 200) {
+						var results = JSON.parse(x.responseText);
+						var recent = 0;
+						var scroll = results.length > 0 && GetScroll() > 0 ? GetScrollMax() - GetScroll() : -1;
 
-					for (var i = 0; i < results.length; ++i) {
-						var post = results[i];
-						if (post.date > last_update) {
-							post.from = ReplaceTags(post.from);
-							post.message = ReplaceTags(post.message);
-							post.image = ReplaceTags(post.image);
+						for (var i = 0; i < results.length; ++i) {
+							var post = results[i];
+							if (post.date > last_update) {
+								post.from = ReplaceTags(post.from);
+								post.message = ReplaceTags(post.message);
+								post.image = ReplaceTags(post.image);
 
-							var timeline = document.getElementById("timeline");
-							var div = '<div class="post"><div class="post-author">' + post.from + '<span class="post-date" id="' + post.date + '"> - ' + TimeSince(post.date) + '</span></div><div class="post-message">' + post.message + '</div><img class="post-image" src="' + post.image + '"></div>';
+								var timeline = document.getElementById("timeline");
+								var div = '<div class="post"><div class="post-author">' + post.from + '<span class="post-date" id="' + post.date + '"> - ' + TimeSince(post.date) + ' ago</span></div><div class="post-message">' + post.message + '</div><img class="post-image" src="' + post.image + '"></div>';
 
-							timeline.innerHTML = div + timeline.innerHTML;
+								timeline.innerHTML = div + timeline.innerHTML;
 
-							if (post.date > recent) recent = post.date;
+								if (post.date > recent) recent = post.date;
+							}
 						}
-					}
 
-					if (recent > last_update) last_update = recent;
-				}
-			});
+						if (recent > last_update) last_update = recent;
+						
+						if (scroll != -1) window.scrollTo(0, GetScrollMax() - scroll);
+					}
+				});
+			}
 
 			setTimeout(update, 10 * 1000);
 		})();
+		
+		function GetScroll() {
+			return (window.pageYOffset || document.documentElement.scrollTop)  - (document.documentElement.clientTop || 0);
+		}
+		
+		function GetScrollMax() {
+			return window.scrollMaxY || (document.documentElement.scrollHeight - document.documentElement.clientHeight);
+		}
 
 		function HttpGet(url, state) {
 			var x = new XMLHttpRequest();
