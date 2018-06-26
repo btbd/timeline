@@ -61,23 +61,16 @@ func BadRequest(w http.ResponseWriter, err string) {
 func HandleFileRequest(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	path := r.URL.Path[1:]
+	bytes, err := ioutil.ReadFile("index.html")
 
-	bytes, err := ioutil.ReadFile(path)
 	if err == nil {
+		if len(header) != 0 {
+			bytes = []byte(strings.Replace(string(bytes), "***Timeline***", header, -1))
+		}
+
 		w.Write(bytes)
 	} else {
-		bytes, err := ioutil.ReadFile("index.html")
-
-		if err == nil {
-			if len(header) != 0 {
-				bytes = []byte(strings.Replace(string(bytes), "***Timeline***", header, -1))
-			}
-
-			w.Write(bytes)
-		} else {
-			w.Write([]byte("404: \"" + path + "\" not found\n"))
-		}
+		w.Write([]byte("404: \"" + r.URL.Path[1:] + "\" not found\n"))
 	}
 }
 
@@ -85,32 +78,38 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if r.Method == "POST" {
-		bytes, err := ioutil.ReadFile(tokens_path)
-		if err == nil {
-			auth := r.Header.Get("Authorization")
-			if len(auth) < 8 || !strings.HasPrefix(auth, "Bearer ") {
-				BadRequest(w, "No Bearer token provided")
-				return
-			}
-
-			auth = auth[7:len(auth)]
-
-			valid := false
-			for _, token := range strings.Split(string(bytes), "\n") {
-				if i := strings.Index(token, "#"); i != -1 {
-					token = token[0:i]
+		if len(tokens_path) != 0 {
+			bytes, err := ioutil.ReadFile(tokens_path)
+			if err == nil {
+				auth := r.Header.Get("Authorization")
+				if len(auth) < 8 || !strings.HasPrefix(auth, "Bearer ") {
+					BadRequest(w, "No Bearer token provided")
+					return
 				}
-				token = strings.Trim(token, " \r")
 
-				if auth == token {
-					valid = true
-					break
+				auth = auth[7:len(auth)]
+
+				valid := false
+				for _, token := range strings.Split(string(bytes), "\n") {
+					if i := strings.Index(token, "#"); i != -1 {
+						token = token[0:i]
+					}
+					token = strings.Trim(token, " \r")
+
+					if auth == token {
+						valid = true
+						break
+					}
 				}
-			}
 
-			if !valid {
-				BadRequest(w, "Incorrect token provided")
-				return
+				if !valid {
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte("Incorrect token provided"))
+					return
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\"\n", tokens_path)
+				os.Exit(1)
 			}
 		}
 
@@ -189,7 +188,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			post.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(body)
 			post.Date = time.Now().UTC().Unix()
 
-			Print("POST request (time %v):\n  from:    \"%v\"\n  message: \"%v\"\n\n", post.Date, post.From, post.Message)
+			Print("%v - \"%v\"\n", time.Unix(post.Date, 0).UTC(), post.From)
 
 			posts = append(posts, post)
 			if len(posts) > 100 {
@@ -247,6 +246,14 @@ func main() {
 	flag.StringVar(&tokens_path, "tokens", tokens_path, "tokens for authenticating requests")
 
 	flag.Parse()
+	
+	if len(tokens_path) != 0 {
+		_, err := ioutil.ReadFile(tokens_path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\"\n", tokens_path)
+			os.Exit(1)
+		}
+	}
 
 	http.HandleFunc("/", HandleFileRequest)
 	http.HandleFunc("/post", HandlePost)
