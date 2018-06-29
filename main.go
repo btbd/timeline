@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,16 +17,21 @@ import (
 )
 
 type Post struct {
-	From    string `json:"from"`
-	Message string `json:"message"`
-	Image   string `json:"image"`
-	Date    int64  `json:"date"`
+	From     string `json:"from"`
+	Message  string `json:"message"`
+	Image    string `json:"image"`
+	Date     int64  `json:"date"`
+	Id       int64  `json:"id"`
+	
+	Raw      []byte `json:"-"`
+	RawType  string `json:"-"`
 }
 
 var posts []Post = []Post{}
 var tokens_path string
 var verbose bool
 var header string
+var global_id int64
 
 func Print(format string, args ...interface{}) {
 	if verbose {
@@ -185,8 +189,14 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			var post Post
 			post.From = j["from"].(string)
 			post.Message = j["message"].(string)
-			post.Image = "data:image/png;base64," + base64.StdEncoding.EncodeToString(body)
+			post.Raw = body
+			post.RawType = p.Header.Get("Content-Type")
 			post.Date = time.Now().UTC().Unix()
+			
+			post.Id = global_id
+			global_id++
+			
+			post.Image = "./image?id=" + strconv.FormatInt(post.Id, 10)
 
 			Print("%v - \"%v\"\n", time.Unix(post.Date, 0).UTC(), post.From)
 
@@ -200,6 +210,22 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func HandleImage(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	
+	if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil && id > 0 {
+		for _, post := range posts {
+			if post.Id == id {
+				w.Header().Set("Content-Type", post.RawType)
+				w.Write(post.Raw)
+				return
+			}
+		}
+	}
+	
+	BadRequest(w, "Could not find image")
+}
+
 func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -207,11 +233,13 @@ func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 
 	var new_posts []Post = []Post{}
 
-	if t, err := strconv.ParseInt(r.FormValue("t"), 10, 64); err == nil && t > 0 {
-		for _, post := range posts {
-			if post.Date > t {
-				new_posts = append(new_posts, post)
+	if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil {
+		for i := len(posts) - 1; i > -1; i-- {
+			if posts[i].Id <= id {
+				break
 			}
+			
+			new_posts = append(new_posts, posts[i])
 		}
 	} else {
 		new_posts = posts
@@ -226,6 +254,8 @@ func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	global_id = time.Now().UTC().Unix()
+	
 	header = "Timeline"
 	tokens_path = "tokens"
 	port := 80
@@ -257,6 +287,7 @@ func main() {
 
 	http.HandleFunc("/", HandleFileRequest)
 	http.HandleFunc("/post", HandlePost)
+	http.HandleFunc("/image", HandleImage)
 	http.HandleFunc("/timeline", HandleTimeline)
 
 	if len(crt) > 0 && len(key) > 0 {

@@ -105,7 +105,7 @@
 	</body>
 
 	<script>
-		var last_update    = 0;
+		var last_id = 0;
 
 		(function update() {
 			var dates = document.getElementsByClassName("post-date");
@@ -114,15 +114,17 @@
 			}
 
 			if (document.getElementById("update-checkbox").checked) {
-				HttpGet("./timeline?t=" + last_update, function(x) {
+				HttpGet("./timeline?id=" + last_id, function(x) {
 					if (x.readyState === 4 && x.status === 200) {
 						var results = JSON.parse(x.responseText);
-						var recent = 0;
 						var scroll = results.length > 0 && GetScroll() > 0 ? GetScrollMax() - GetScroll() : -1;
 
-						for (var i = 0; i < results.length; ++i) {
-							var post = results[i];
-							if (post.date > last_update) {
+						if (results.length > 0) {
+							last_id = results[0].id;
+							
+							for (var i = results.length - 1; i > -1; --i) {
+								var post = results[i];
+								
 								post.from = ReplaceTags(post.from);
 								post.message = ReplaceTags(post.message);
 								post.image = ReplaceTags(post.image);
@@ -131,13 +133,9 @@
 								var div = '<div class="post"><div class="post-author">' + post.from + '<span class="post-date" id="' + post.date + '"> - ' + TimeSince(post.date) + ' ago</span></div><div class="post-message">' + post.message + '</div><img class="post-image" src="' + post.image + '"></div>';
 
 								timeline.innerHTML = div + timeline.innerHTML;
-
-								if (post.date > recent) recent = post.date;
 							}
 						}
-
-						if (recent > last_update) last_update = recent;
-						
+				
 						if (scroll != -1) window.scrollTo(0, GetScrollMax() - scroll);
 					}
 				});
