@@ -11,6 +11,7 @@ A simple timeline for logging pictures with messages.
 - `v` - Display debug info
 - `crt` - File path to certificate for TLS
 - `key` - File path to key for TLS
+- 'posts' - Directory path to store posts
 - `tokens` - File path to Bearer tokens separated by new lines for verifying POST requests
 	- If this is not specified, no Bearer token is necessary to add a post
 	- Example tokens file
