@@ -11,23 +11,33 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Post struct {
-	From     string `json:"from"`
-	Message  string `json:"message"`
-	Image    string `json:"image"`
-	Date     int64  `json:"date"`
-	Id       int64  `json:"id"`
-	
-	Raw      []byte `json:"-"`
-	RawType  string `json:"-"`
+	From    string `json:"from"`
+	Message string `json:"message"`
+	Image   string `json:"image"`
+	Date    int64  `json:"date"`
+	Id      int64  `json:"id"`
+	Raw     []byte `json:"raw"`
+	RawType string `json:"rawType"`
 }
 
-var posts []Post = []Post{}
+type RequestPost struct {
+	From    string `json:"from"`
+	Message string `json:"message"`
+	Image   string `json:"image"`
+	Date    int64  `json:"date"`
+	Id      int64  `json:"id"`
+}
+
+var posts_mu sync.RWMutex
+var posts_path string
 var tokens_path string
 var verbose bool
 var header string
@@ -112,7 +122,7 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			} else {
-				fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\"\n", tokens_path)
+				fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\": %v\n", tokens_path, err)
 				os.Exit(1)
 			}
 		}
@@ -192,18 +202,33 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			post.Raw = body
 			post.RawType = p.Header.Get("Content-Type")
 			post.Date = time.Now().UTC().Unix()
-			
+
 			post.Id = global_id
 			global_id++
-			
-			post.Image = "./image?id=" + strconv.FormatInt(post.Id, 10)
+			id := strconv.FormatInt(post.Id, 10)
+
+			post.Image = "./image?id=" + id
 
 			Print("%v - \"%v\"\n", time.Unix(post.Date, 0).UTC(), post.From)
 
-			posts = append(posts, post)
-			if len(posts) > 100 {
-				posts = posts[1:101]
+			posts_mu.Lock()
+			data, _ := json.Marshal(post)
+			ioutil.WriteFile(posts_path+id, data, 0644)
+
+			files, err := ioutil.ReadDir(posts_path)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to open posts dir \"%v\": %v\n", posts_path, err)
+				os.Exit(1)
 			}
+
+			sort.Slice(files, func(i, j int) bool {
+				return files[i].ModTime().Unix() > files[j].ModTime().Unix()
+			})
+
+			for i := 100; i < len(files); i++ {
+				os.Remove(posts_path + files[i].Name())
+			}
+			posts_mu.Unlock()
 		}
 	} else {
 		BadRequest(w, "Expected multipart POST request with 1st part as JSON containing 'from' and 'message', and 2nd part containing an image to post")
@@ -212,17 +237,17 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 
 func HandleImage(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	
+
 	if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil && id > 0 {
-		for _, post := range posts {
-			if post.Id == id {
-				w.Header().Set("Content-Type", post.RawType)
-				w.Write(post.Raw)
-				return
-			}
+		if data, err := ioutil.ReadFile(posts_path + strconv.FormatInt(id, 10)); err == nil {
+			var post Post
+			json.Unmarshal(data, &post)
+			w.Header().Set("Content-Type", post.RawType)
+			w.Write(post.Raw)
+			return
 		}
 	}
-	
+
 	BadRequest(w, "Could not find image")
 }
 
@@ -231,21 +256,39 @@ func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	var new_posts []Post = []Post{}
+	posts := []RequestPost{}
 
+	posts_mu.RLock()
 	if id, err := strconv.ParseInt(r.FormValue("id"), 10, 64); err == nil {
-		for i := len(posts) - 1; i > -1; i-- {
-			if posts[i].Id <= id {
-				break
+		files, _ := ioutil.ReadDir(posts_path)
+		sort.Slice(files, func(i, j int) bool {
+			return files[i].ModTime().Unix() > files[j].ModTime().Unix()
+		})
+
+		for _, f := range files {
+			if data, err := ioutil.ReadFile(posts_path + f.Name()); err == nil {
+				var post RequestPost
+				json.Unmarshal(data, &post)
+				if post.Id <= id {
+					break
+				}
+
+				posts = append(posts, post)
 			}
-			
-			new_posts = append(new_posts, posts[i])
 		}
 	} else {
-		new_posts = posts
+		files, _ := ioutil.ReadDir(posts_path)
+		for _, f := range files {
+			if data, err := ioutil.ReadFile(posts_path + f.Name()); err == nil {
+				var post RequestPost
+				json.Unmarshal(data, &post)
+				posts = append(posts, post)
+			}
+		}
 	}
+	posts_mu.RUnlock()
 
-	bytes, err := json.Marshal(new_posts)
+	bytes, err := json.Marshal(posts)
 	if err != nil {
 		return
 	}
@@ -255,9 +298,9 @@ func HandleTimeline(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	global_id = time.Now().UTC().Unix()
-	
+
 	header = "Timeline"
-	tokens_path = "tokens"
+	tokens_path = ""
 	port := 80
 	crt := ""
 	key := ""
@@ -274,15 +317,24 @@ func main() {
 	flag.StringVar(&crt, "crt", crt, "certificate for TLS")
 	flag.StringVar(&key, "key", key, "key for TLS")
 	flag.StringVar(&tokens_path, "tokens", tokens_path, "tokens for authenticating requests")
+	flag.StringVar(&posts_path, "posts", posts_path, "dir to store posts")
 
 	flag.Parse()
-	
+
 	if len(tokens_path) != 0 {
-		_, err := ioutil.ReadFile(tokens_path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\"\n", tokens_path)
+		if _, err := ioutil.ReadFile(tokens_path); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to open token file \"%v\": %v\n", tokens_path, err)
 			os.Exit(1)
 		}
+	}
+
+	if len(posts_path) == 0 {
+		fmt.Fprintf(os.Stderr, "Posts directory path required\n")
+		os.Exit(1)
+	}
+
+	if posts_path[len(posts_path)-1] != os.PathSeparator {
+		posts_path += string(os.PathSeparator)
 	}
 
 	http.HandleFunc("/", HandleFileRequest)
@@ -292,11 +344,11 @@ func main() {
 
 	if len(crt) > 0 && len(key) > 0 {
 		if err := http.ListenAndServeTLS(":"+strconv.Itoa(port), crt, key, nil); err != nil {
-			fmt.Fprintf(os.Stderr, "(HTTPS) Error listening on port %d:\n\t%s\n", port, err)
+			fmt.Fprintf(os.Stderr, "(HTTPS) Error listening on port %d:\n\t%v\n", port, err)
 			os.Exit(1)
 		}
 	} else if err := http.ListenAndServe(":"+strconv.Itoa(port), nil); err != nil {
-		fmt.Fprintf(os.Stderr, "(HTTP) Error listening on port %d:\n\t%s\n", port, err)
+		fmt.Fprintf(os.Stderr, "(HTTP) Error listening on port %d:\n\t%v\n", port, err)
 		os.Exit(1)
 	}
 }
