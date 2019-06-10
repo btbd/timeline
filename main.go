@@ -37,7 +37,7 @@ type RequestPost struct {
 }
 
 var posts_mu sync.RWMutex
-var posts_path string
+var posts_path string = "./posts"
 var tokens_path string
 var verbose bool
 var header string
@@ -335,6 +335,11 @@ func main() {
 
 	if posts_path[len(posts_path)-1] != os.PathSeparator {
 		posts_path += string(os.PathSeparator)
+	}
+
+	if err := os.MkdirAll(posts_path, 0700); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating dir %q: %s\n", posts_path, err)
+		os.Exit(1)
 	}
 
 	http.HandleFunc("/", HandleFileRequest)
